@@ -1,33 +1,41 @@
-## Put comments here that give an overall description of what your
-## functions do
+## makeCacheMatrix creates a structure (a list) of elements used to keep track of the current
+## value of a matrix and to cache and access this matrix and its inverse.
 
-# makeCacheMatrix creates a structure (a list) of elements used to keep track of the current
-# value of a matrix and its value during a prior invocation, and functions ("methods") to
-# manage this structure.
+## cacheSolve uses this structure to return the inverse of the matrix without re-computation,
+## updating the structure to reflect a change when required.
 
-# cacheSolve uses the structure to return without recalculation the inverse of a matrix that
-# remains unchanged, or to update the structure to reflect a change.
+# Arguments are not checked for validity.
 
-# Other than described below, arguments are not checked: matrix is assumed invertible, etc.
+## makeCacheMatrix(x)   x is an inversible matrix
 
+# Input is an inversible matrix. Output is a list containing functions to manage a cache, plus
+# the name of the matrix passed. That name will allow cacheSolve to check - as requested - if
+# the matrix has changed. That check works for a single matrix as argument. Checking change in
+# an expresion that evaluates to an inversible matrix is not implemented. The check is made in
+# the original scope.
 
-## makeCacheMatrix(x) -> y    (x is an inversible matrix, y is a "cache" structure)
-
-# Besides the functions presented in the vector example, here the return list contains the
-# name of the matrix passed. That name will allow cacheSolve to check - as requested - if
-# the matrix has changed. That check *will work for individual matrixes*. Checking equality
-# of expresions that evaluate to inversible matrixes is not implemented.
-
-makeCacheMatrix <- function(x = matrix()) {
-    getArg <- deparse(substitute(x))
-    m <- NULL
+makeCacheMatrix <- function(inversibleMatrix = matrix()) {
+    # Obtain argument's name
+    getArg <- deparse(substitute(inversibleMatrix))
+    solvedMatrix <- NULL
+    # Cache matrix
     set <- function(y) {
-        x <<- y
-        m <<- NULL
+        inversibleMatrix <<- y
+        solvedMatrix <<- NULL
     }
-    get <- function() x
-    setSolve <- function(solve) m <<- solve
-    getSolve <- function() m
+    # Get matrix from cache
+    get <- function() {
+        inversibleMatrix
+    }
+    # Cache inverse
+    setSolve <- function(solve) {
+        solvedMatrix <<- solve
+    }
+    # Get inverse from cache
+    getSolve <- function() {
+        solvedMatrix
+    }
+    # Return cache structure as list
     list(set = set,
         get = get,
         setSolve = setSolve,
@@ -37,38 +45,79 @@ makeCacheMatrix <- function(x = matrix()) {
 }
 
 
-## cacheSolve(y)    (y is a "cache" structure returned by an invocation to makeCacheMatrix)
+## cacheSolve(y)    y is a cache returned by an invocation to makeCacheMatrix
 
-# This function receives a list produced by makeCacheMatrix. First it checks if the current
-# value of the original matrix remains the same. That check is done with "identical"
-# instead of "if". (Although not relevant for this problem, "identical" detects changed
-# dimensions besides content.)
+# Input is a cache produced by makeCacheMatrix. First it checks if the matrix has changed.
+# It uses "identical" instead of "all ( ... == ... )". Faster, screens changed dimensions and
+# content.
 #
-# If the matrix has changed, cacheSolve reports it before updating the "cache" structure via
-# the "set" function in the structure. This action is also available to the user. 
+# If the matrix has changed, reports it, and updates the cache structure via the "set" function.
+# This action is also available to the user. 
 # 
-# Next, cacheSolve checks if the inverse exists. If it does, it corresponds to the current
-# content of the matrix referenced, and it is returned directly from the cache.
+# Checks if the inverse exists. If it does, it corresponds to the current content and is
+# returned directly from the cache.
 #
-# If the inverse does not yet exist or was invalidated, it is now calculated, the structure
-# is updated and the inverse is returned.
+# If the inverse does not exist, it is calculated, the cache is updated and the inverse is returned.
 
-cacheSolve <- function(x, ...) {
-    ## Return a matrix that is the inverse of 'x'
-    current <- get(x$getArg, envir=1)
-    data <- x$get()
-    if(!identical(current, x$get())) {
+cacheSolve <- function(cache, ...) {
+    # Get current content
+    current <- get(cache$getArg, envir=1)
+    # Compare, update if required
+    cached <- cache$get()
+    if(!identical(current, cached)) {
         message("matrix has changed. updating cache")
-        x$set(current)
-        data <- current
+        cache$set(current)
+        cached <- current
     }
-    m <- x$getSolve()
-    if(!is.null(m)) {
+    # Return cached inverse if it exists
+    solvedMatrix <- cache$getSolve()
+    if(!is.null(solvedMatrix)) {
         message("getting cached data")
-        return(m)
+        return(solvedMatrix)
     }
-    # data <- x$get()
-    m <- solve(data, ...)
-    x$setSolve(m)
-    m
+    # No cached inverse: solve and return it
+    solvedMatrix <- solve(cached, ...)
+    cache$setSolve(solvedMatrix)
+    solvedMatrix
 }
+
+# Test run:
+#
+# > a <- matrix(1:4, ncol = 2)
+# > b <- c(1, 2, 0, 3, 4, 0, 0, 0, 1); dim(b) <- c(3, 3)
+# > m <- makeCacheMatrix(a)
+# > cacheSolve(m)
+#      [,1] [,2]
+# [1,]   -2  1.5
+# [2,]    1 -0.5
+# > cacheSolve(m)
+# getting cached data
+#      [,1] [,2]
+# [1,]   -2  1.5
+# [2,]    1 -0.5
+# > a <- b
+# > cacheSolve(m)
+# matrix has changed. updating cache
+#      [,1] [,2] [,3]
+# [1,]   -2  1.5    0
+# [2,]    1 -0.5    0
+# [3,]    0  0.0    1
+# > cacheSolve(m)
+# getting cached data
+#      [,1] [,2] [,3]
+# [1,]   -2  1.5    0
+# [2,]    1 -0.5    0
+# [3,]    0  0.0    1
+# > m <- makeCacheMatrix(a)
+# > cacheSolve(m)
+#      [,1] [,2] [,3]
+# [1,]   -2  1.5    0
+# [2,]    1 -0.5    0
+# [3,]    0  0.0    1
+# > cacheSolve(m)
+# getting cached data
+#      [,1] [,2] [,3]
+# [1,]   -2  1.5    0
+# [2,]    1 -0.5    0
+# [3,]    0  0.0    1
+# > 
